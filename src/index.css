@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Boogaloo&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 30 100% 97%;
+    --foreground: 240 33% 17%;
+
+    --card: 30 50% 99%;
+    --card-foreground: 240 33% 17%;
+
+    --popover: 30 100% 97%;
+    --popover-foreground: 240 33% 17%;
+
+    --primary: 0 100% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 37% 17%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 30 30% 92%;
+    --muted-foreground: 240 10% 40%;
+
+    --accent: 48 100% 60%;
+    --accent-foreground: 240 33% 17%;
+
+    --success: 160 100% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 0%;
+    --input: 30 30% 85%;
+    --ring: 0 100% 65%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body text-base font-medium;
+    font-size: 16px;
+    background-image: radial-gradient(circle, hsl(var(--muted-foreground) / 0.08) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Boogaloo', cursive;
+    @apply font-extrabold;
+  }
+
+  h1 { @apply text-4xl md:text-5xl; }
+  h2 { @apply text-3xl md:text-4xl; }
+  h3 { @apply text-2xl md:text-3xl; }
+
+  label, strong, b {
+    @apply font-bold;
+  }
+}
+
+@layer components {
+  .brutal-card {
+    @apply bg-card rounded-lg border-[3px] border-foreground shadow-brutal;
+  }
+
+  .brutal-btn {
+    @apply font-heading font-extrabold border-[3px] border-foreground shadow-brutal-sm
+           transition-all duration-150 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none;
+  }
+
+  .brutal-badge {
+    @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-full border-2 border-foreground
+           font-mono text-sm font-extrabold uppercase tracking-wider;
+  }
+}
+
+@layer utilities {
+  .hover-bounce {
+    @apply transition-transform duration-200 hover:scale-[1.03];
+  }
+}
