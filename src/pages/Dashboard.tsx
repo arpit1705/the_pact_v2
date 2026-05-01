@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { UserCard } from '@/components/UserCard';
 import { LogWorkoutModal } from '@/components/LogWorkoutModal';
 import { TreatSelector } from '@/components/TreatSelector';
 import { MotivationalBanner } from '@/components/MotivationalBanner';
 import { useAuth } from '@/context/AuthContext';
-import { useCouple } from '@/context/CoupleContext';
+import { usePact } from '@/context/PactContext';
 import { useAppData } from '@/hooks/useAppData';
 
 export type AppData = ReturnType<typeof useAppData>;
@@ -15,26 +15,28 @@ interface DashboardProps {
 
 export default function Dashboard({ data }: DashboardProps) {
   const { user, profile } = useAuth();
-  const { partner } = useCouple();
+  const { members } = usePact();
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [treatModalUserId, setTreatModalUserId] = useState<string | null>(null);
 
   const myId = user?.id ?? '';
-  const partnerId = partner?.id ?? '';
 
-  const partnerPendingLogs = data.getPendingMissedLogs(partnerId);
-  const hasPendingTreat = partnerPendingLogs.length > 0;
-
-  const allTreatsResolved = data.getTotalTreats(myId) === 0 && data.getTotalTreats(partnerId) === 0;
-  const noPendingMissed =
-    data.getPendingMissedLogs(myId).length === 0 && data.getPendingMissedLogs(partnerId).length === 0;
-  const showCelebration = allTreatsResolved && noPendingMissed;
-
-  // Always show current user first
-  const users = [
+  const users = useMemo(() => [
     { id: myId, name: profile?.name ?? '', emoji: profile?.emoji ?? '💪', isMe: true },
-    { id: partnerId, name: partner?.name ?? '', emoji: partner?.emoji ?? '💪', isMe: false },
-  ];
+    ...members.map(m => ({ id: m.id, name: m.name, emoji: m.emoji, isMe: false })),
+  ], [myId, profile, members]);
+
+  const pendingByMember = useMemo(() => {
+    const map: Record<string, ReturnType<typeof data.getPendingMissedLogs>> = {};
+    for (const m of members) {
+      map[m.id] = data.getPendingMissedLogs(m.id);
+    }
+    return map;
+  }, [members, data]);
+
+  const allTreatsResolved = users.every(u => data.getTotalTreats(u.id) === 0);
+  const noPendingMissed = users.every(u => data.getPendingMissedLogs(u.id).length === 0);
+  const showCelebration = allTreatsResolved && noPendingMissed;
 
   return (
     <div className="container space-y-6 pb-8">
@@ -49,21 +51,22 @@ export default function Dashboard({ data }: DashboardProps) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {users.map(u => (
-          <UserCard
-            key={u.id}
-            name={u.name}
-            emoji={u.emoji}
-            streak={data.getStreakForUser(u.id)}
-            todayStatus={data.getTodayStatus(u.id)}
-            monthlyCount={data.getMonthlyCount(u.id)}
-            totalTreats={data.getTotalTreats(u.isMe ? partnerId : myId)}
-            isMe={u.isMe}
-            onPickTreat={
-              !u.isMe && hasPendingTreat ? () => setTreatModalUserId(partnerId) : undefined
-            }
-          />
-        ))}
+        {users.map(u => {
+          const hasPending = !u.isMe && (pendingByMember[u.id]?.length ?? 0) > 0;
+          return (
+            <UserCard
+              key={u.id}
+              name={u.name}
+              emoji={u.emoji}
+              streak={data.getStreakForUser(u.id)}
+              todayStatus={data.getTodayStatus(u.id)}
+              monthlyCount={data.getMonthlyCount(u.id)}
+              totalTreats={data.getTotalTreats(u.id)}
+              isMe={u.isMe}
+              onPickTreat={hasPending ? () => setTreatModalUserId(u.id) : undefined}
+            />
+          );
+        })}
       </div>
 
       <MotivationalBanner />
@@ -88,7 +91,7 @@ export default function Dashboard({ data }: DashboardProps) {
         <TreatSelector
           missedUserId={treatModalUserId}
           data={data}
-          logId={partnerPendingLogs[0]?.id ?? null}
+          logId={pendingByMember[treatModalUserId]?.[0]?.id ?? null}
           onClose={() => setTreatModalUserId(null)}
         />
       )}

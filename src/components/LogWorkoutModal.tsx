@@ -4,7 +4,7 @@ import { TreatSelector } from '@/components/TreatSelector';
 import { ConfettiCelebration } from '@/components/ConfettiCelebration';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useCouple } from '@/context/CoupleContext';
+import { usePact } from '@/context/PactContext';
 import type { useAppData } from '@/hooks/useAppData';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -17,7 +17,7 @@ interface LogWorkoutModalProps {
 
 export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps) {
   const { user } = useAuth();
-  const { coupleId } = useCouple();
+  const { pactId } = usePact();
 
   const [date, setDate] = useState(editLog?.date || new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState<'done' | 'missed' | null>(editLog?.status || null);
@@ -53,7 +53,7 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
   };
 
   const handleSubmit = async () => {
-    if (!status || !user?.id || !coupleId) return;
+    if (!status || !user?.id || !pactId) return;
 
     let photoUrl: string | undefined = editLog?.photoUrl;
 
@@ -61,7 +61,7 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
       setIsUploading(true);
       try {
         const ext = photoFile.name.split('.').pop()?.toLowerCase() || 'jpg';
-        const path = `${coupleId}/${user.id}/${date}-${Date.now()}.${ext}`;
+        const path = `${pactId}/${user.id}/${date}-${Date.now()}.${ext}`;
         const { error: uploadError } = await supabase.storage
           .from('workout_photos')
           .upload(path, photoFile, { upsert: true });
@@ -80,7 +80,7 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
     } else {
       const log = await data.addWorkoutLog({
         userId: user.id,
-        coupleId,
+        pactId,
         date,
         status,
         notes: notes || undefined,

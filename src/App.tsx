@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider, useIsFetching } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { CoupleProvider } from '@/context/CoupleContext';
+import { PactProvider, usePact } from '@/context/PactContext';
 import { Header } from '@/components/Header';
 import { useAppData } from '@/hooks/useAppData';
 import Dashboard from '@/pages/Dashboard';
 import TreatTracker from '@/pages/TreatTracker';
+import TreatEditor from '@/pages/TreatEditor';
 import History from '@/pages/History';
 import Login from '@/pages/Login';
 import Onboarding from '@/pages/Onboarding';
@@ -18,10 +19,11 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const { user, profile, loading } = useAuth();
+  const { hasPactPartner, loading: pactLoading } = usePact();
   const data = useAppData();
   const isFetching = useIsFetching();
 
-  if (loading) {
+  if (loading || pactLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <span className="text-6xl animate-spin-slow inline-block">⚖️</span>
@@ -31,8 +33,7 @@ function AppContent() {
 
   if (!user) return <Login />;
 
-  // Has auth but no profile yet, or profile exists but no couple
-  if (!profile?.name || !profile?.coupleId) {
+  if (!profile?.name || !profile?.pactId || !hasPactPartner) {
     return <Onboarding />;
   }
 
@@ -47,6 +48,7 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<Dashboard data={data} />} />
         <Route path="/treats" element={<TreatTracker data={data} />} />
+        <Route path="/my-treats" element={<TreatEditor data={data} />} />
         <Route path="/history" element={<History data={data} />} />
         <Route path="*" element={<Dashboard data={data} />} />
       </Routes>
@@ -59,9 +61,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <CoupleProvider>
+          <PactProvider>
             <AppContent />
-          </CoupleProvider>
+          </PactProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

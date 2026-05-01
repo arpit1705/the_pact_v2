@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', emoji: '🏠' },
   { path: '/treats', label: 'Treats', emoji: '🎁' },
+  { path: '/my-treats', label: 'My Treats', emoji: '✏️' },
   { path: '/history', label: 'History', emoji: '📜' },
 ];
 
@@ -23,7 +24,7 @@ export function Header() {
           <div>
             <h1 className="text-2xl md:text-3xl font-heading leading-none text-secondary">THE PACT</h1>
             <p className="font-mono text-[10px] text-muted-foreground italic hidden sm:block">
-              A binding covenant between two people who love each other
+              A binding covenant of accountability
             </p>
           </div>
         </Link>
@@ -45,7 +46,6 @@ export function Header() {
             ))}
           </nav>
 
-          {/* User menu */}
           <div className="relative">
             <button
               onClick={() => setPillOpen(p => !p)}

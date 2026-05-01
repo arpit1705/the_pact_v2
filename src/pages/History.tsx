@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ARPIT_PICKS, MADHU_PICKS } from '@/types';
 import type { WorkoutLog, TreatOption, ResolutionEvent } from '@/types';
 import { LogWorkoutModal } from '@/components/LogWorkoutModal';
 import { useAuth } from '@/context/AuthContext';
-import { useCouple } from '@/context/CoupleContext';
+import { usePact } from '@/context/PactContext';
 import type { AppData } from '@/pages/Dashboard';
 
 interface HistoryProps {
@@ -15,18 +14,29 @@ type TimelineEvent =
   | { kind: 'treat'; log: WorkoutLog; option: TreatOption }
   | { kind: 'resolution'; event: ResolutionEvent };
 
-const allTreats = [...ARPIT_PICKS, ...MADHU_PICKS];
-const getTreatOption = (key: string) => allTreats.find(p => p.key === key);
+const getTreatOption = (key: string, treatsFromData: TreatOption[]) => treatsFromData.find(p => p.key === key);
 
 export default function History({ data }: HistoryProps) {
   const { user, profile } = useAuth();
-  const { partner } = useCouple();
-  const [userFilter, setUserFilter] = useState<string>('both');
+  const { members } = usePact();
+  const [userFilter, setUserFilter] = useState<string>('all');
   const [eventFilter, setEventFilter] = useState<'all' | 'workouts' | 'treats' | 'resolutions' | 'passed'>('all');
   const [editingLog, setEditingLog] = useState<string | null>(null);
 
   const myId = user?.id ?? '';
-  const partnerId = partner?.id ?? '';
+
+  const memberMap = useMemo(() => {
+    const map: Record<string, { name: string; emoji: string }> = {};
+    if (profile) map[myId] = { name: profile.name, emoji: profile.emoji };
+    members.forEach(m => { map[m.id] = { name: m.name, emoji: m.emoji }; });
+    return map;
+  }, [myId, profile, members]);
+
+  const allMemberIds = useMemo(() => [myId, ...members.map(m => m.id)], [myId, members]);
+
+  const allDynTreats = useMemo(() => {
+    return allMemberIds.flatMap(id => data.getTreatsForUser(id));
+  }, [data, allMemberIds]);
 
   const now = new Date();
   const currentMonth = now.toLocaleString('default', { month: 'long' });
@@ -40,27 +50,33 @@ export default function History({ data }: HistoryProps) {
     return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
   };
 
-  const getName = (userId: string) => userId === myId ? profile?.name : partner?.name;
-  const getEmoji = (userId: string) => userId === myId ? profile?.emoji : partner?.emoji;
+  const getName = (userId: string) => memberMap[userId]?.name ?? 'Unknown';
+  const getEmoji = (userId: string) => memberMap[userId]?.emoji ?? '💪';
+
+  const filterOptions = useMemo(() => [
+    { id: 'all', label: '👥 All' },
+    { id: 'me', label: `${profile?.emoji} Me` },
+    ...members.map(m => ({ id: m.id, label: `${m.emoji} ${m.name}` })),
+  ], [profile, members]);
 
   const timeline = useMemo((): TimelineEvent[] => {
     const events: TimelineEvent[] = [];
     data.workoutLogs.forEach(log => {
       events.push({ kind: 'workout', log });
       if (log.treatSelected) {
-        const option = getTreatOption(log.treatSelected);
+        const option = getTreatOption(log.treatSelected, allDynTreats);
         if (option) events.push({ kind: 'treat', log, option });
       }
     });
     data.resolutionLog.forEach(event => events.push({ kind: 'resolution', event }));
     return events;
-  }, [data.workoutLogs, data.resolutionLog]);
+  }, [data.workoutLogs, data.resolutionLog, allDynTreats]);
 
   const filteredTimeline = useMemo(() => {
     return timeline
       .filter(e => {
-        if (userFilter !== 'both') {
-          const targetId = userFilter === 'me' ? myId : partnerId;
+        if (userFilter !== 'all') {
+          const targetId = userFilter === 'me' ? myId : userFilter;
           if (e.kind === 'workout' || e.kind === 'treat') {
             if (e.log.userId !== targetId) return false;
           } else if (e.kind === 'resolution') {
@@ -82,7 +98,7 @@ export default function History({ data }: HistoryProps) {
         }
         return dateB.localeCompare(dateA);
       });
-  }, [timeline, userFilter, eventFilter, myId, partnerId]);
+  }, [timeline, userFilter, eventFilter, myId]);
 
   const logToEdit = editingLog ? data.workoutLogs.find(l => l.id === editingLog) : null;
 
@@ -92,13 +108,13 @@ export default function History({ data }: HistoryProps) {
 
       <div className="brutal-card bg-accent/30 p-4 text-center">
         <p className="font-heading text-2xl text-secondary">{currentMonth} Summary</p>
-        <div className="flex justify-center gap-6 mt-2 font-mono text-base font-bold">
-          {[{ id: myId, name: profile?.name ?? '', emoji: profile?.emoji ?? '' }, { id: partnerId, name: partner?.name ?? '', emoji: partner?.emoji ?? '' }].map(u => {
-            const done = monthLogs.filter(l => l.userId === u.id && l.status === 'done').length;
-            const total = monthLogs.filter(l => l.userId === u.id).length;
+        <div className="flex justify-center gap-6 mt-2 font-mono text-base font-bold flex-wrap">
+          {allMemberIds.map(id => {
+            const done = monthLogs.filter(l => l.userId === id && l.status === 'done').length;
+            const total = monthLogs.filter(l => l.userId === id).length;
             return (
-              <span key={u.id}>
-                {u.emoji} {u.name}: <strong>{done}/{total}</strong> ✅
+              <span key={id}>
+                {getEmoji(id)} {getName(id)}: <strong>{done}/{total}</strong> ✅
               </span>
             );
           })}
@@ -106,16 +122,12 @@ export default function History({ data }: HistoryProps) {
       </div>
 
       {/* User filter */}
-      <div className="flex bg-muted rounded-full border-2 border-foreground p-1 max-w-md mx-auto">
-        {[
-          { id: 'both', label: '👫 Both' },
-          { id: 'me', label: `${profile?.emoji} Me` },
-          { id: 'partner', label: `${partner?.emoji} ${partner?.name}` },
-        ].map(opt => (
+      <div className="flex bg-muted rounded-full border-2 border-foreground p-1 max-w-lg mx-auto overflow-x-auto">
+        {filterOptions.map(opt => (
           <button
             key={opt.id}
             onClick={() => setUserFilter(opt.id)}
-            className={`flex-1 py-2.5 rounded-full font-heading text-lg transition-all ${
+            className={`flex-1 py-2.5 rounded-full font-heading text-lg transition-all whitespace-nowrap px-3 ${
               userFilter === opt.id ? 'bg-primary text-primary-foreground shadow-brutal-sm' : 'text-muted-foreground'
             }`}
           >
@@ -149,7 +161,7 @@ export default function History({ data }: HistoryProps) {
         {filteredTimeline.map((event, idx) => {
           if (event.kind === 'workout') {
             const log = event.log;
-            const treat = log.treatSelected ? getTreatOption(log.treatSelected) : null;
+            const treat = log.treatSelected ? getTreatOption(log.treatSelected, allDynTreats) : null;
             const isTreatPending = log.status === 'missed' && log.treatSelected === null && !log.mutualMiss;
             const isForgiven = log.status === 'forgiven';
             const canEdit = myId === log.userId;
@@ -216,7 +228,7 @@ export default function History({ data }: HistoryProps) {
             );
           }
 
-          const treatOption = getTreatOption(event.event.treatType);
+          const treatOption = getTreatOption(event.event.treatType, allDynTreats);
           return (
             <div key={`resolution-${event.event.id}`} className="brutal-card p-4 border-success/50">
               <div className="flex items-center gap-3">

@@ -9,7 +9,7 @@ export default function Login() {
         <span className="text-6xl animate-spin-slow inline-block mb-4">⚖️</span>
         <h1 className="font-heading text-secondary mb-2">THE PACT</h1>
         <p className="font-mono text-sm font-bold text-muted-foreground italic mb-8">
-          A binding covenant between two people who love each other
+          A binding covenant of mutual accountability
         </p>
 
         <button
@@ -26,7 +26,7 @@ export default function Login() {
         </button>
 
         <p className="font-mono text-xs text-muted-foreground mt-6">
-          No account needed — just sign in and pair with your partner.
+          No account needed — just sign in and link up with your pact member.
         </p>
       </div>
     </div>

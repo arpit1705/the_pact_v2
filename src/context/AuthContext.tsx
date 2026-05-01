@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.id,
         name: data.name,
         emoji: data.emoji,
-        coupleId: data.couple_id,
+        pactId: data.pact_id,
       });
     }
   }

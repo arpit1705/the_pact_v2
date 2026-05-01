@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { getAllTreatsForUser } from '@/types';
 import type { TreatOption } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-import { useCouple } from '@/context/CoupleContext';
+import { usePact } from '@/context/PactContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { AppData } from '@/pages/Dashboard';
 
@@ -12,38 +11,53 @@ interface TreatTrackerProps {
 
 export default function TreatTracker({ data }: TreatTrackerProps) {
   const { user, profile } = useAuth();
-  const { partner, partner1Id } = useCouple();
-  const [selected, setSelected] = useState<{ treat: TreatOption; userId: string } | null>(null);
+  const { members } = usePact();
+  const [selected, setSelected] = useState<{ treat: TreatOption; beneficiaryId: string; debtorId: string } | null>(null);
 
   const myId = user?.id ?? '';
-  const partnerId = partner?.id ?? '';
 
-  const myTotal = data.getTotalTreats(myId);
-  const partnerTotal = data.getTotalTreats(partnerId);
-
-  const users = [
+  const allUsers = [
     { id: myId, name: profile?.name ?? '', emoji: profile?.emoji ?? '💪' },
-    { id: partnerId, name: partner?.name ?? '', emoji: partner?.emoji ?? '💪' },
+    ...members.map(m => ({ id: m.id, name: m.name, emoji: m.emoji })),
   ];
+
+  const getUnresolvedCount = (debtorId: string, treatKey: string) => {
+    const counts = data.treatCounts[debtorId]?.[treatKey];
+    return counts ? counts.total - counts.resolved : 0;
+  };
+
+  const getTotalEarned = (beneficiaryId: string): number => {
+    const treats = data.getTreatsForUser(beneficiaryId);
+    let total = 0;
+    for (const debtor of allUsers) {
+      if (debtor.id === beneficiaryId) continue;
+      for (const t of treats) {
+        total += getUnresolvedCount(debtor.id, t.key);
+      }
+    }
+    return total;
+  };
 
   return (
     <div className="container space-y-6 pb-8">
       <h2 className="text-4xl md:text-5xl font-heading text-secondary text-center">🎁 Treat Tracker</h2>
 
       <div className="brutal-card bg-secondary text-secondary-foreground p-5">
-        <div className="flex items-center justify-center gap-4 md:gap-8 text-center font-heading text-2xl md:text-3xl">
-          <span>{partner?.emoji} {partner?.name} has earned <span className="text-accent">{partnerTotal}</span></span>
-          <span className="text-accent text-4xl">⚖️</span>
-          <span>{profile?.emoji} {profile?.name} has earned <span className="text-accent">{myTotal}</span></span>
+        <div className="flex items-center justify-center gap-4 md:gap-6 text-center font-heading text-xl md:text-2xl flex-wrap">
+          {allUsers.map((u, i) => (
+            <span key={u.id}>
+              {i > 0 && <span className="text-accent text-3xl mx-2">⚖️</span>}
+              {u.emoji} {u.name}: <span className="text-accent">{getTotalEarned(u.id)}</span>
+            </span>
+          ))}
         </div>
       </div>
 
       {selected && (() => {
-        const { treat: p, userId } = selected;
-        const counts = data.treatCounts[userId]?.[p.key];
-        const unresolvedCount = counts ? counts.total - counts.resolved : 0;
+        const { treat: p, beneficiaryId, debtorId } = selected;
+        const unresolvedCount = getUnresolvedCount(debtorId, p.key);
         const isActive = unresolvedCount > 0;
-        const canResolve = myId !== userId;
+        const canResolve = myId === debtorId && isActive;
 
         return (
           <Dialog open onOpenChange={() => setSelected(null)}>
@@ -62,12 +76,12 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                     <span className="font-heading text-destructive font-bold">×{unresolvedCount} outstanding</span>
                   </div>
                 )}
-                {isActive && canResolve && (
+                {canResolve && (
                   <button
-                    onClick={() => { data.resolveTreat(userId, p.key, myId); setSelected(null); }}
+                    onClick={() => { data.resolveTreat(debtorId, p.key, myId); setSelected(null); }}
                     className="brutal-btn w-full py-3 rounded-xl text-lg font-heading bg-success text-success-foreground hover-bounce"
                   >
-                    ✓ Redeem
+                    ✓ Fulfill
                   </button>
                 )}
               </div>
@@ -76,56 +90,68 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
         );
       })()}
 
-      {users.map(u => {
-        const treats = getAllTreatsForUser(u.id, partner1Id ?? '');
-        const isMe = u.id === myId;
+      {allUsers.map(beneficiary => {
+        const treats = data.getTreatsForUser(beneficiary.id);
+        const isMe = beneficiary.id === myId;
         const sectionLabel = isMe
-          ? `${u.emoji} Your Treats owed (read-only)`
-          : `${u.emoji} ${u.name}'s Treats — redeem these`;
+          ? `${beneficiary.emoji} Treats You've Earned`
+          : `${beneficiary.emoji} ${beneficiary.name}'s Earned Treats`;
+
+        const debtors = allUsers.filter(u => u.id !== beneficiary.id);
 
         return (
-          <div key={u.id}>
-            <h3 className={`mb-3 ${isMe ? 'text-muted-foreground' : 'text-secondary'}`}>
+          <div key={beneficiary.id}>
+            <h3 className={`mb-3 font-heading text-xl ${isMe ? 'text-secondary' : 'text-muted-foreground'}`}>
               {sectionLabel}
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {treats.map(p => {
-                const counts = data.treatCounts[u.id]?.[p.key];
-                const unresolvedCount = counts ? counts.total - counts.resolved : 0;
-                const isActive = unresolvedCount > 0;
-                const canResolve = !isMe && isActive;
+            {treats.length === 0 ? (
+              <div className="brutal-card p-6 text-center opacity-60">
+                <p className="font-mono text-sm font-bold text-muted-foreground">
+                  {isMe ? "You haven't defined any treats yet. Go to My Treats to add some." : `${beneficiary.name} hasn't defined any treats yet.`}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {treats.map(p => {
+                  let totalUnresolved = 0;
+                  for (const d of debtors) {
+                    totalUnresolved += getUnresolvedCount(d.id, p.key);
+                  }
+                  const isActive = totalUnresolved > 0;
+                  const canFulfill = !isMe && isActive && debtors.some(d => d.id === myId && getUnresolvedCount(myId, p.key) > 0);
 
-                return (
-                  <div
-                    key={p.key}
-                    onClick={() => setSelected({ treat: p, userId: u.id })}
-                    className={`brutal-card p-4 transition-all cursor-pointer hover:scale-[1.02] ${
-                      isActive ? 'animate-pulse-glow' : 'opacity-50 grayscale'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">{p.emoji}</span>
-                      <span className={`text-3xl font-heading font-extrabold ${isActive ? 'text-destructive animate-bounce-in' : 'text-muted-foreground'}`}>
-                        ×{unresolvedCount}
-                      </span>
-                    </div>
-                    <p className="font-heading text-xl text-secondary">{p.name}</p>
-                    <p className="font-mono text-sm font-bold text-muted-foreground mb-3">{p.description}</p>
-                    <button
-                      onClick={e => { e.stopPropagation(); if (canResolve) data.resolveTreat(u.id, p.key, myId); }}
-                      disabled={!canResolve}
-                      className={`brutal-btn w-full py-2.5 rounded-lg text-base font-heading ${
-                        canResolve
-                          ? 'bg-success text-success-foreground hover-bounce'
-                          : 'bg-muted text-muted-foreground cursor-not-allowed'
+                  return (
+                    <div
+                      key={p.key}
+                      onClick={() => {
+                        const debtorId = debtors.find(d => getUnresolvedCount(d.id, p.key) > 0)?.id ?? debtors[0]?.id ?? '';
+                        setSelected({ treat: p, beneficiaryId: beneficiary.id, debtorId });
+                      }}
+                      className={`brutal-card p-4 transition-all cursor-pointer hover:scale-[1.02] ${
+                        isActive ? 'animate-pulse-glow' : 'opacity-50 grayscale'
                       }`}
                     >
-                      ✓ Redeem
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-2xl">{p.emoji}</span>
+                        <span className={`text-3xl font-heading font-extrabold ${isActive ? 'text-destructive animate-bounce-in' : 'text-muted-foreground'}`}>
+                          ×{totalUnresolved}
+                        </span>
+                      </div>
+                      <p className="font-heading text-xl text-secondary">{p.name}</p>
+                      <p className="font-mono text-sm font-bold text-muted-foreground mb-3">{p.description}</p>
+                      {canFulfill && (
+                        <button
+                          onClick={e => { e.stopPropagation(); data.resolveTreat(myId, p.key, myId); }}
+                          className="brutal-btn w-full py-2.5 rounded-lg text-base font-heading bg-success text-success-foreground hover-bounce"
+                        >
+                          ✓ Fulfill
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}

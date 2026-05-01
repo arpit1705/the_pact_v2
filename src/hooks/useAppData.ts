@@ -2,15 +2,15 @@ import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useCouple } from '@/context/CoupleContext';
-import type { WorkoutLog, TreatCounts, ResolutionEvent } from '@/types';
+import { usePact } from '@/context/PactContext';
+import type { WorkoutLog, TreatCounts, ResolutionEvent, UserTreat, TreatOption } from '@/types';
 
 // ─── DB row types ─────────────────────────────────────────────────────────────
 
 interface DbWorkoutLog {
   id: string;
   user_id: string;
-  couple_id: string;
+  pact_id: string;
   date: string;
   status: 'done' | 'missed' | 'forgiven';
   notes: string | null;
@@ -23,7 +23,7 @@ interface DbWorkoutLog {
 }
 
 interface DbTreatCount {
-  couple_id: string;
+  pact_id: string;
   debtor_user_id: string;
   punishment_key: string;
   total: number;
@@ -32,11 +32,23 @@ interface DbTreatCount {
 
 interface DbResolutionEvent {
   id: string;
-  couple_id: string;
+  pact_id: string;
   debtor_user_id: string;
   punishment_type: string;
   resolved_by: string;
   resolved_at: string;
+}
+
+interface DbUserTreat {
+  id: string;
+  user_id: string;
+  key: string;
+  name: string;
+  description: string;
+  details: string;
+  emoji: string;
+  sort_order: number;
+  created_at: string;
 }
 
 // ─── Mappers ──────────────────────────────────────────────────────────────────
@@ -45,7 +57,7 @@ function toWorkoutLog(row: DbWorkoutLog): WorkoutLog {
   return {
     id: row.id,
     userId: row.user_id,
-    coupleId: row.couple_id,
+    pactId: row.pact_id,
     date: row.date,
     status: row.status,
     notes: row.notes ?? undefined,
@@ -60,7 +72,7 @@ function toWorkoutLog(row: DbWorkoutLog): WorkoutLog {
 function toResolutionEvent(row: DbResolutionEvent): ResolutionEvent {
   return {
     id: row.id,
-    coupleId: row.couple_id,
+    pactId: row.pact_id,
     debtorUserId: row.debtor_user_id,
     treatType: row.punishment_type,
     resolvedBy: row.resolved_by,
@@ -80,27 +92,45 @@ function toTreatCounts(rows: DbTreatCount[]): TreatCounts {
   return result;
 }
 
+function toUserTreat(row: DbUserTreat): UserTreat {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    key: row.key,
+    name: row.name,
+    description: row.description,
+    details: row.details,
+    emoji: row.emoji,
+    sortOrder: row.sort_order,
+  };
+}
+
+function toTreatOption(ut: UserTreat): TreatOption {
+  return { key: ut.key, name: ut.name, description: ut.description, details: ut.details, emoji: ut.emoji };
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAppData() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const { coupleId, partner } = useCouple();
+  const { pactId, members } = usePact();
 
   const KEYS = {
-    workoutLogs: ['workout_logs', coupleId] as const,
-    treatCounts: ['punishment_counts', coupleId] as const,
-    resolutionLog: ['resolution_events', coupleId] as const,
+    workoutLogs: ['workout_logs', pactId] as const,
+    treatCounts: ['punishment_counts', pactId] as const,
+    resolutionLog: ['resolution_events', pactId] as const,
+    userTreats: ['user_treats', pactId] as const,
   };
 
   const { data: workoutLogs = [] } = useQuery({
     queryKey: KEYS.workoutLogs,
-    enabled: !!coupleId,
+    enabled: !!pactId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('workout_logs')
         .select('*')
-        .eq('couple_id', coupleId)
+        .eq('pact_id', pactId)
         .order('date', { ascending: false });
       if (error) throw error;
       return (data as DbWorkoutLog[]).map(toWorkoutLog);
@@ -109,12 +139,12 @@ export function useAppData() {
 
   const { data: treatCounts = {} } = useQuery({
     queryKey: KEYS.treatCounts,
-    enabled: !!coupleId,
+    enabled: !!pactId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('punishment_counts')
         .select('*')
-        .eq('couple_id', coupleId);
+        .eq('pact_id', pactId);
       if (error) throw error;
       return toTreatCounts(data as DbTreatCount[]);
     },
@@ -122,43 +152,82 @@ export function useAppData() {
 
   const { data: resolutionLog = [] } = useQuery({
     queryKey: KEYS.resolutionLog,
-    enabled: !!coupleId,
+    enabled: !!pactId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('resolution_events')
         .select('*')
-        .eq('couple_id', coupleId)
+        .eq('pact_id', pactId)
         .order('resolved_at', { ascending: false });
       if (error) throw error;
       return (data as DbResolutionEvent[]).map(toResolutionEvent);
     },
   });
 
+  const myId = user?.id ?? '';
+  const allMemberIds = [myId, ...members.map(m => m.id)].filter(Boolean);
+
+  const { data: userTreats = [] } = useQuery({
+    queryKey: KEYS.userTreats,
+    enabled: allMemberIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_treats')
+        .select('*')
+        .in('user_id', allMemberIds)
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      return (data as DbUserTreat[]).map(toUserTreat);
+    },
+  });
+
+  const getMyTreats = useCallback(
+    (): UserTreat[] => userTreats.filter(t => t.userId === myId),
+    [userTreats, myId],
+  );
+
+  const getTreatsForUser = useCallback(
+    (userId: string): TreatOption[] =>
+      userTreats.filter(t => t.userId === userId).map(toTreatOption),
+    [userTreats],
+  );
+
+  const getMyTreatOptions = useCallback(
+    (): TreatOption[] =>
+      userTreats.filter(t => t.userId === myId).map(toTreatOption),
+    [userTreats, myId],
+  );
+
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const addWorkoutLogMutation = useMutation({
     mutationFn: async (log: Omit<WorkoutLog, 'id'>): Promise<WorkoutLog> => {
       let mutualMiss = false;
-      const partnerId = partner?.id;
 
-      if (log.status === 'missed' && partnerId) {
-        const { data: otherMiss } = await supabase
+      // In a group pact, "mutual miss" means ALL other members also missed
+      // on the same day (no treats owed when everyone fails).
+      if (log.status === 'missed' && members.length > 0) {
+        const otherIds = members.map(m => m.id);
+        const { data: otherLogs } = await supabase
           .from('workout_logs')
-          .select('id')
-          .eq('couple_id', coupleId)
-          .eq('user_id', partnerId)
+          .select('id, user_id')
+          .eq('pact_id', pactId)
+          .in('user_id', otherIds)
           .eq('date', log.date)
           .eq('status', 'missed')
           .is('punishment_selected', null)
-          .eq('mutual_miss', false)
-          .maybeSingle();
+          .eq('mutual_miss', false);
 
-        if (otherMiss) {
+        const missedIds = new Set((otherLogs ?? []).map(l => l.user_id));
+        if (otherIds.every(id => missedIds.has(id))) {
           mutualMiss = true;
-          await supabase
-            .from('workout_logs')
-            .update({ mutual_miss: true })
-            .eq('id', otherMiss.id);
+          const idsToUpdate = (otherLogs ?? []).map(l => l.id);
+          if (idsToUpdate.length > 0) {
+            await supabase
+              .from('workout_logs')
+              .update({ mutual_miss: true })
+              .in('id', idsToUpdate);
+          }
         }
       }
 
@@ -166,7 +235,7 @@ export function useAppData() {
         .from('workout_logs')
         .insert({
           user_id: log.userId,
-          couple_id: coupleId,
+          pact_id: pactId,
           date: log.date,
           status: log.status,
           notes: log.notes ?? null,
@@ -210,7 +279,7 @@ export function useAppData() {
       const { data: existing } = await supabase
         .from('punishment_counts')
         .select('total, resolved')
-        .eq('couple_id', coupleId)
+        .eq('pact_id', pactId)
         .eq('debtor_user_id', userId)
         .eq('punishment_key', treatKey)
         .maybeSingle();
@@ -219,13 +288,13 @@ export function useAppData() {
         .from('punishment_counts')
         .upsert(
           {
-            couple_id: coupleId,
+            pact_id: pactId,
             debtor_user_id: userId,
             punishment_key: treatKey,
             total: (existing?.total ?? 0) + 1,
             resolved: existing?.resolved ?? 0,
           },
-          { onConflict: 'couple_id,debtor_user_id,punishment_key' },
+          { onConflict: 'pact_id,debtor_user_id,punishment_key' },
         );
       if (error) throw error;
     },
@@ -245,7 +314,7 @@ export function useAppData() {
       const { data: current } = await supabase
         .from('punishment_counts')
         .select('total, resolved')
-        .eq('couple_id', coupleId)
+        .eq('pact_id', pactId)
         .eq('debtor_user_id', debtorUserId)
         .eq('punishment_key', treatKey)
         .single();
@@ -254,7 +323,7 @@ export function useAppData() {
         const { error: countError } = await supabase
           .from('punishment_counts')
           .update({ resolved: current.resolved + 1 })
-          .eq('couple_id', coupleId)
+          .eq('pact_id', pactId)
           .eq('debtor_user_id', debtorUserId)
           .eq('punishment_key', treatKey);
         if (countError) throw countError;
@@ -263,7 +332,7 @@ export function useAppData() {
       const { data: targetLog } = await supabase
         .from('workout_logs')
         .select('id')
-        .eq('couple_id', coupleId)
+        .eq('pact_id', pactId)
         .eq('user_id', debtorUserId)
         .eq('punishment_selected', treatKey)
         .is('punishment_resolved_at', null)
@@ -282,7 +351,7 @@ export function useAppData() {
       const { error: eventError } = await supabase
         .from('resolution_events')
         .insert({
-          couple_id: coupleId,
+          pact_id: pactId,
           debtor_user_id: debtorUserId,
           punishment_type: treatKey,
           resolved_by: resolvedByUserId,
@@ -295,6 +364,47 @@ export function useAppData() {
       qc.invalidateQueries({ queryKey: KEYS.workoutLogs });
       qc.invalidateQueries({ queryKey: KEYS.resolutionLog });
     },
+  });
+
+  const saveTreatMutation = useMutation({
+    mutationFn: async (treat: Omit<UserTreat, 'id' | 'sortOrder'> & { id?: string; sortOrder?: number }) => {
+      if (treat.id) {
+        const { error } = await supabase
+          .from('user_treats')
+          .update({
+            name: treat.name,
+            description: treat.description,
+            details: treat.details,
+            emoji: treat.emoji,
+            key: treat.key,
+          })
+          .eq('id', treat.id);
+        if (error) throw error;
+      } else {
+        const currentCount = userTreats.filter(t => t.userId === treat.userId).length;
+        const { error } = await supabase
+          .from('user_treats')
+          .insert({
+            user_id: treat.userId,
+            key: treat.key,
+            name: treat.name,
+            description: treat.description,
+            details: treat.details,
+            emoji: treat.emoji,
+            sort_order: currentCount,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.userTreats }),
+  });
+
+  const deleteTreatMutation = useMutation({
+    mutationFn: async (treatId: string) => {
+      const { error } = await supabase.from('user_treats').delete().eq('id', treatId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.userTreats }),
   });
 
   // ── Stable action wrappers ────────────────────────────────────────────────
@@ -320,6 +430,17 @@ export function useAppData() {
     (debtorUserId: string, treatKey: string, resolvedByUserId: string) =>
       resolveTreatMutation.mutate({ debtorUserId, treatKey, resolvedByUserId }),
     [resolveTreatMutation],
+  );
+
+  const saveTreat = useCallback(
+    (treat: Omit<UserTreat, 'id' | 'sortOrder'> & { id?: string; sortOrder?: number }) =>
+      saveTreatMutation.mutateAsync(treat),
+    [saveTreatMutation],
+  );
+
+  const deleteTreat = useCallback(
+    (treatId: string) => deleteTreatMutation.mutateAsync(treatId),
+    [deleteTreatMutation],
   );
 
   // ── Computed helpers ──────────────────────────────────────────────────────
@@ -386,19 +507,35 @@ export function useAppData() {
     [workoutLogs],
   );
 
+  const getMemberProfile = useCallback(
+    (userId: string): { name: string; emoji: string } | undefined => {
+      if (userId === myId) return { name: user?.user_metadata?.name ?? '', emoji: '💪' };
+      const m = members.find(m => m.id === userId);
+      return m ? { name: m.name, emoji: m.emoji } : undefined;
+    },
+    [myId, members, user],
+  );
+
   return {
     workoutLogs,
     treatCounts,
     resolutionLog,
+    userTreats,
     addWorkoutLog,
     updateWorkoutLog,
     incrementTreat,
     resolveTreat,
+    saveTreat,
+    deleteTreat,
     getPendingMissedLogs,
     getStreakForUser,
     getTodayStatus,
     getMonthlyCount,
     getTotalTreats,
+    getMyTreats,
+    getMyTreatOptions,
+    getTreatsForUser,
+    getMemberProfile,
     currentUserId: user?.id ?? null,
   };
 }

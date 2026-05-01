@@ -5,12 +5,12 @@ const QUOTES = [
   "The pact remembers. The pact always remembers. 👁️",
   "Gains incoming. Excuses outgoing. 💪📤",
   "Your muscles have a legal right to be sore. 📜",
-  "Love is patient. The Pact is not. ❤️‍🔥",
+  "Patience is a virtue. The Pact is not. ❤️‍🔥",
   "Sweat now or suffer later. Actually, you'll suffer either way. 😈",
-  "This relationship runs on protein and accountability. 🥩⚡",
+  "This pact runs on protein and accountability. 🥩⚡",
   "Signed, sealed, and squatted. 🏋️",
   "No reps left behind. No excuses accepted. 🚫",
-  "Clause 7: Excuses void all cuddle privileges. 🫠",
+  "Clause 7: Excuses void all treat privileges. 🫠",
 ];
 
 export function MotivationalBanner() {
