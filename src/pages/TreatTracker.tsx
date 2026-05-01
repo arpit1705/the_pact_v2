@@ -54,7 +54,7 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
       </div>
 
       {selected && (() => {
-        const { treat: p, beneficiaryId, debtorId } = selected;
+        const { treat: p, debtorId } = selected;
         const unresolvedCount = getUnresolvedCount(debtorId, p.key);
         const isActive = unresolvedCount > 0;
         const canResolve = myId === debtorId && isActive;

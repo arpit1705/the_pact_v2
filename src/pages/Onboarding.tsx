@@ -7,7 +7,7 @@ type Step = 'profile' | 'pair';
 
 export default function Onboarding() {
   const { user, profile, refreshProfile } = useAuth();
-  const { refreshMembers, hasPactPartner } = usePact();
+  const { refreshMembers } = usePact();
   const [step, setStep] = useState<Step>(
     profile?.pactId ? 'pair' : profile?.name ? 'pair' : 'profile',
   );
