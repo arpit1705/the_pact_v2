@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { TreatOption } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 import { usePact } from '@/context/PactContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import type { AppData } from '@/pages/Dashboard';
 
 interface TreatTrackerProps {
@@ -13,6 +13,7 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
   const { user, profile } = useAuth();
   const { members } = usePact();
   const [selected, setSelected] = useState<{ treat: TreatOption; beneficiaryId: string; debtorId: string } | null>(null);
+  const [confirmRedeem, setConfirmRedeem] = useState<{ debtorId: string; treatKey: string; resolverId: string; treatName: string; treatEmoji: string } | null>(null);
 
   const myId = user?.id ?? '';
 
@@ -78,7 +79,7 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                 )}
                 {canResolve && (
                   <button
-                    onClick={() => { data.resolveTreat(debtorId, p.key, myId); setSelected(null); }}
+                    onClick={() => setConfirmRedeem({ debtorId, treatKey: p.key, resolverId: myId, treatName: p.name, treatEmoji: p.emoji })}
                     className="brutal-btn w-full py-3 rounded-xl text-lg font-heading bg-success text-success-foreground hover-bounce"
                   >
                     ✓ Fulfill
@@ -89,6 +90,40 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
           </Dialog>
         );
       })()}
+
+      {confirmRedeem && (
+        <Dialog open onOpenChange={() => setConfirmRedeem(null)}>
+          <DialogContent className="brutal-card max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-3 text-2xl font-heading text-secondary">
+                <span className="text-4xl">{confirmRedeem.treatEmoji}</span>
+                Redeem Treat?
+              </DialogTitle>
+              <DialogDescription className="font-body text-base pt-1">
+                Mark <span className="font-heading text-secondary">{confirmRedeem.treatName}</span> as fulfilled? This will be logged and cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-3 pt-2">
+              <button
+                onClick={() => setConfirmRedeem(null)}
+                className="brutal-btn flex-1 py-2.5 rounded-xl font-heading bg-muted text-muted-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  data.resolveTreat(confirmRedeem.debtorId, confirmRedeem.treatKey, confirmRedeem.resolverId);
+                  setConfirmRedeem(null);
+                  setSelected(null);
+                }}
+                className="brutal-btn flex-1 py-2.5 rounded-xl font-heading bg-success text-success-foreground hover-bounce"
+              >
+                ✓ Confirm
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {allUsers.map(beneficiary => {
         const treats = data.getTreatsForUser(beneficiary.id);
@@ -141,7 +176,7 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                       <p className="font-mono text-sm font-bold text-muted-foreground mb-3">{p.description}</p>
                       {canFulfill && (
                         <button
-                          onClick={e => { e.stopPropagation(); data.resolveTreat(myId, p.key, myId); }}
+                          onClick={e => { e.stopPropagation(); setConfirmRedeem({ debtorId: myId, treatKey: p.key, resolverId: myId, treatName: p.name, treatEmoji: p.emoji }); }}
                           className="brutal-btn w-full py-2.5 rounded-lg text-base font-heading bg-success text-success-foreground hover-bounce"
                         >
                           ✓ Fulfill
