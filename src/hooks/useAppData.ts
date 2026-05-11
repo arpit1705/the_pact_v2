@@ -493,10 +493,17 @@ export function useAppData() {
 
   const getTotalTreats = useCallback(
     (userId: string): number => {
-      const counts = treatCounts[userId] ?? {};
-      return Object.values(counts).reduce((sum, c) => sum + (c.total - c.resolved), 0);
+      const userTreatKeys = new Set(userTreats.filter(t => t.userId === userId).map(t => t.key));
+      let total = 0;
+      for (const [debtorId, counts] of Object.entries(treatCounts)) {
+        if (debtorId === userId) continue;
+        for (const [key, c] of Object.entries(counts)) {
+          if (userTreatKeys.has(key)) total += c.total - c.resolved;
+        }
+      }
+      return total;
     },
-    [treatCounts],
+    [treatCounts, userTreats],
   );
 
   const getPendingMissedLogs = useCallback(

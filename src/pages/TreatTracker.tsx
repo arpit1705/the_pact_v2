@@ -58,7 +58,6 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
         const { treat: p, debtorId } = selected;
         const unresolvedCount = getUnresolvedCount(debtorId, p.key);
         const isActive = unresolvedCount > 0;
-        const canResolve = myId === debtorId && isActive;
 
         return (
           <Dialog open onOpenChange={() => setSelected(null)}>
@@ -77,14 +76,6 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                     <span className="font-heading text-destructive font-bold">×{unresolvedCount} outstanding</span>
                   </div>
                 )}
-                {canResolve && (
-                  <button
-                    onClick={() => setConfirmRedeem({ debtorId, treatKey: p.key, resolverId: myId, treatName: p.name, treatEmoji: p.emoji })}
-                    className="brutal-btn w-full py-3 rounded-xl text-lg font-heading bg-success text-success-foreground hover-bounce"
-                  >
-                    ✓ Fulfill
-                  </button>
-                )}
               </div>
             </DialogContent>
           </Dialog>
@@ -100,7 +91,7 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                 Redeem Treat?
               </DialogTitle>
               <DialogDescription className="font-body text-base pt-1">
-                Mark <span className="font-heading text-secondary">{confirmRedeem.treatName}</span> as fulfilled? This will be logged and cannot be undone.
+                Confirm you've received <span className="font-heading text-secondary">{confirmRedeem.treatName}</span>? This will be logged and cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex gap-3 pt-2">
@@ -153,7 +144,8 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                     totalUnresolved += getUnresolvedCount(d.id, p.key);
                   }
                   const isActive = totalUnresolved > 0;
-                  const canFulfill = !isMe && isActive && debtors.some(d => d.id === myId && getUnresolvedCount(myId, p.key) > 0);
+                  const redeemDebtor = isMe ? debtors.find(d => getUnresolvedCount(d.id, p.key) > 0) : undefined;
+                  const canRedeem = isMe && redeemDebtor !== undefined;
 
                   return (
                     <div
@@ -174,12 +166,12 @@ export default function TreatTracker({ data }: TreatTrackerProps) {
                       </div>
                       <p className="font-heading text-xl text-secondary">{p.name}</p>
                       <p className="font-mono text-sm font-bold text-muted-foreground mb-3">{p.description}</p>
-                      {canFulfill && (
+                      {canRedeem && (
                         <button
-                          onClick={e => { e.stopPropagation(); setConfirmRedeem({ debtorId: myId, treatKey: p.key, resolverId: myId, treatName: p.name, treatEmoji: p.emoji }); }}
+                          onClick={e => { e.stopPropagation(); setConfirmRedeem({ debtorId: redeemDebtor!.id, treatKey: p.key, resolverId: myId, treatName: p.name, treatEmoji: p.emoji }); }}
                           className="brutal-btn w-full py-2.5 rounded-lg text-base font-heading bg-success text-success-foreground hover-bounce"
                         >
-                          ✓ Fulfill
+                          🎁 Redeem
                         </button>
                       )}
                     </div>
