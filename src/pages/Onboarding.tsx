@@ -25,17 +25,21 @@ export default function Onboarding() {
     fromEmoji: string;
   } | null>(null);
   const [loadingInvites, setLoadingInvites] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
+  const pollExhausted = pollCount >= 10;
 
   const EMOJIS = ['💪', '🏋️', '🔥', '⚡', '🦁', '🐉', '🌟', '🎯', '🏆', '💃', '🕺', '🐺'];
 
   useEffect(() => {
     if (!sent && !profile?.pactId) return;
+    if (pollExhausted) return;
     const interval = setInterval(async () => {
       await refreshProfile();
       await refreshMembers();
-    }, 5000);
+      setPollCount(c => c + 1);
+    }, 10000);
     return () => clearInterval(interval);
-  }, [sent, profile?.pactId]);
+  }, [sent, profile?.pactId, pollExhausted]);
 
   async function saveProfile() {
     if (!name.trim()) return;
@@ -105,6 +109,7 @@ export default function Onboarding() {
 
     setSending(false);
     if (invErr) { setError(invErr.message); return; }
+    setPollCount(0);
     setSent(true);
   }
 
@@ -188,9 +193,18 @@ export default function Onboarding() {
               <p className="font-mono text-sm text-muted-foreground">
                 Tell them to open The Pact and check for your invite.
               </p>
-              <p className="font-mono text-xs text-muted-foreground animate-pulse">
-                ⏳ Waiting for them to accept…
+              <p className="font-mono text-sm text-foreground font-bold">
+                Once they accept, The Pact will open automatically. 🎉
               </p>
+              {pollExhausted ? (
+                <p className="font-mono text-xs text-muted-foreground">
+                  Still waiting? Refresh the page or check back later.
+                </p>
+              ) : (
+                <p className="font-mono text-xs text-muted-foreground animate-pulse">
+                  ⏳ Checking for acceptance…
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex gap-2">
@@ -241,6 +255,9 @@ export default function Onboarding() {
               >
                 {saving ? '⏳ Joining...' : '✅ Accept & Join Pact'}
               </button>
+              <p className="font-mono text-xs text-muted-foreground text-center">
+                Accepting will open The Pact for both of you. 🎉
+              </p>
             </div>
           ) : (
             <button
