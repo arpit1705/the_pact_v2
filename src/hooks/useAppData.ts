@@ -116,11 +116,14 @@ export function useAppData() {
   const { user } = useAuth();
   const { pactId, members } = usePact();
 
+  const myId = user?.id ?? '';
+  const allMemberIds = [myId, ...members.map(m => m.id)].filter(Boolean);
+
   const KEYS = {
     workoutLogs: ['workout_logs', pactId] as const,
     treatCounts: ['punishment_counts', pactId] as const,
     resolutionLog: ['resolution_events', pactId] as const,
-    userTreats: ['user_treats', pactId] as const,
+    userTreats: ['user_treats', pactId, ...allMemberIds] as const,
   };
 
   const { data: workoutLogs = [] } = useQuery({
@@ -163,9 +166,6 @@ export function useAppData() {
       return (data as DbResolutionEvent[]).map(toResolutionEvent);
     },
   });
-
-  const myId = user?.id ?? '';
-  const allMemberIds = [myId, ...members.map(m => m.id)].filter(Boolean);
 
   const { data: userTreats = [] } = useQuery({
     queryKey: KEYS.userTreats,
