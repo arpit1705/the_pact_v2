@@ -112,6 +112,21 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
         setShowMutualMiss(true);
         return;
       }
+
+      if (status === 'missed') {
+        // Only open treat selector immediately if all partners have already
+        // logged this date. Otherwise the treat is deferred — it surfaces on
+        // the dashboard once the partner logs.
+        const partnerLogged = data.workoutLogs.some(
+          l => l.userId !== user.id && l.date === date,
+        );
+        if (!partnerLogged) {
+          onClose();
+          return;
+        }
+        setShowTreat(true);
+        return;
+      }
     }
 
     if (status === 'done') {

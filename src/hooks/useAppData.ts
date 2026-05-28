@@ -533,13 +533,24 @@ export function useAppData() {
   );
 
   const getPendingMissedLogs = useCallback(
-    (userId: string): WorkoutLog[] =>
-      workoutLogs
-        .filter(
-          l => l.userId === userId && l.status === 'missed' && l.treatSelected === null && !l.mutualMiss,
-        )
-        .sort((a, b) => a.date.localeCompare(b.date)),
-    [workoutLogs],
+    (userId: string): WorkoutLog[] => {
+      const otherIds = members.map(m => m.id).filter(id => id !== userId);
+      const loggedDatesByUser: Record<string, Set<string>> = {};
+      for (const id of otherIds) {
+        loggedDatesByUser[id] = new Set(workoutLogs.filter(l => l.userId === id).map(l => l.date));
+      }
+      return workoutLogs
+        .filter(l => {
+          if (l.userId !== userId) return false;
+          if (l.status !== 'missed') return false;
+          if (l.treatSelected !== null) return false;
+          if (l.mutualMiss) return false;
+          // Only surface treat prompt once every partner has logged that date.
+          return otherIds.every(id => loggedDatesByUser[id].has(l.date));
+        })
+        .sort((a, b) => a.date.localeCompare(b.date));
+    },
+    [workoutLogs, members],
   );
 
   const getMemberProfile = useCallback(
