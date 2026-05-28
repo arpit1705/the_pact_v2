@@ -561,9 +561,11 @@ export function useAppData() {
 
   const getPendingMissedLogs = useCallback(
     (userId: string): WorkoutLog[] =>
-      workoutLogs.filter(
-        l => l.userId === userId && l.status === 'missed' && l.treatSelected === null && !l.mutualMiss,
-      ),
+      workoutLogs
+        .filter(
+          l => l.userId === userId && l.status === 'missed' && l.treatSelected === null && !l.mutualMiss,
+        )
+        .sort((a, b) => a.date.localeCompare(b.date)),
     [workoutLogs],
   );
 

@@ -148,7 +148,7 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
       <TreatSelector
         missedUserId={user?.id ?? ''}
         data={data}
-        logId={submittedLogId || editLog?.id}
+        pendingLogIds={[submittedLogId || editLog?.id].filter((id): id is string => !!id)}
         onClose={onClose}
       />
     );
