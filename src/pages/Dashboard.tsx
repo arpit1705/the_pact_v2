@@ -52,7 +52,7 @@ export default function Dashboard({ data }: DashboardProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {users.map(u => {
-          const hasPending = !u.isMe && (pendingByMember[u.id]?.length ?? 0) > 0;
+          const pendingCount = u.isMe ? 0 : (pendingByMember[u.id]?.length ?? 0);
           return (
             <UserCard
               key={u.id}
@@ -63,7 +63,8 @@ export default function Dashboard({ data }: DashboardProps) {
               monthlyCount={data.getMonthlyCount(u.id)}
               totalTreats={data.getTotalTreats(u.id)}
               isMe={u.isMe}
-              onPickTreat={hasPending ? () => setTreatModalUserId(u.id) : undefined}
+              pendingCount={pendingCount}
+              onPickTreat={pendingCount > 0 ? () => setTreatModalUserId(u.id) : undefined}
             />
           );
         })}
@@ -91,7 +92,7 @@ export default function Dashboard({ data }: DashboardProps) {
         <TreatSelector
           missedUserId={treatModalUserId}
           data={data}
-          logId={pendingByMember[treatModalUserId]?.[0]?.id ?? null}
+          pendingLogIds={(pendingByMember[treatModalUserId] ?? []).map(l => l.id)}
           onClose={() => setTreatModalUserId(null)}
         />
       )}

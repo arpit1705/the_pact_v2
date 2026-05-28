@@ -9,6 +9,22 @@ import type { useAppData } from '@/hooks/useAppData';
 
 type AppData = ReturnType<typeof useAppData>;
 
+// Oldest day in the last 7 with no log for this user, so a returning user lands on
+// their earliest gap rather than today. Falls back to today if all days are logged.
+function oldestUnloggedDate(logs: AppData['workoutLogs'], userId?: string): string {
+  const today = new Date().toISOString().split('T')[0];
+  if (!userId) return today;
+
+  const loggedDates = new Set(logs.filter(l => l.userId === userId).map(l => l.date));
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    if (!loggedDates.has(dateStr)) return dateStr;
+  }
+  return today;
+}
+
 interface LogWorkoutModalProps {
   data: AppData;
   editLog?: { id: string; userId: string; date: string; status: 'done' | 'missed'; notes?: string; photoUrl?: string };
@@ -19,7 +35,9 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
   const { user } = useAuth();
   const { pactId } = usePact();
 
-  const [date, setDate] = useState(editLog?.date || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(
+    editLog?.date || oldestUnloggedDate(data.workoutLogs, user?.id),
+  );
   const [status, setStatus] = useState<'done' | 'missed' | null>(editLog?.status || null);
   const [notes, setNotes] = useState(editLog?.notes || '');
   const [showTreat, setShowTreat] = useState(false);
@@ -94,6 +112,21 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
         setShowMutualMiss(true);
         return;
       }
+
+      if (status === 'missed') {
+        // Only open treat selector immediately if all partners have already
+        // logged this date. Otherwise the treat is deferred — it surfaces on
+        // the dashboard once the partner logs.
+        const partnerLogged = data.workoutLogs.some(
+          l => l.userId !== user.id && l.date === date,
+        );
+        if (!partnerLogged) {
+          onClose();
+          return;
+        }
+        setShowTreat(true);
+        return;
+      }
     }
 
     if (status === 'done') {
@@ -130,7 +163,7 @@ export function LogWorkoutModal({ data, editLog, onClose }: LogWorkoutModalProps
       <TreatSelector
         missedUserId={user?.id ?? ''}
         data={data}
-        logId={submittedLogId || editLog?.id}
+        pendingLogIds={[submittedLogId || editLog?.id].filter((id): id is string => !!id)}
         onClose={onClose}
       />
     );

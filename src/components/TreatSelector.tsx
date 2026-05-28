@@ -9,16 +9,30 @@ type AppData = ReturnType<typeof useAppData>;
 interface TreatSelectorProps {
   missedUserId: string;
   data: AppData;
-  logId?: string | null;
+  pendingLogIds: string[];
   onClose: () => void;
 }
 
-export function TreatSelector({ missedUserId, data, logId, onClose }: TreatSelectorProps) {
+export function TreatSelector({ missedUserId, data, pendingLogIds, onClose }: TreatSelectorProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [step, setStep] = useState<'selecting' | 'confirming-forgive'>('selecting');
   const [forgiving, setForgiving] = useState(false);
+  const [index, setIndex] = useState(0);
   const { user, profile } = useAuth();
   const { members } = usePact();
+
+  const total = pendingLogIds.length;
+  const currentLogId = pendingLogIds[index];
+
+  const advance = () => {
+    if (index + 1 < total) {
+      setIndex(index + 1);
+      setSelected(null);
+      setStep('selecting');
+    } else {
+      onClose();
+    }
+  };
 
   const getMember = (id: string) => {
     if (id === user?.id) return { name: profile?.name ?? '', emoji: profile?.emoji ?? '💪' };
@@ -35,15 +49,16 @@ export function TreatSelector({ missedUserId, data, logId, onClose }: TreatSelec
   const handleConfirm = () => {
     if (!selected) return;
     data.incrementTreat(missedUserId, selected);
-    if (logId) data.updateWorkoutLog(logId, { treatSelected: selected });
-    onClose();
+    if (currentLogId) data.updateWorkoutLog(currentLogId, { treatSelected: selected });
+    advance();
   };
 
   const handleForgive = async () => {
     setForgiving(true);
     try {
-      if (logId) await data.updateWorkoutLog(logId, { status: 'forgiven', forgivenBy: user?.id ?? null });
-      onClose();
+      if (currentLogId) await data.updateWorkoutLog(currentLogId, { status: 'forgiven', forgivenBy: user?.id ?? null });
+      setForgiving(false);
+      advance();
     } catch {
       setForgiving(false);
     }
@@ -105,7 +120,9 @@ export function TreatSelector({ missedUserId, data, logId, onClose }: TreatSelec
     <div className="fixed inset-0 bg-foreground/50 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
       <div className="brutal-card bg-background w-full md:max-w-2xl md:rounded-xl rounded-t-2xl rounded-b-none md:rounded-b-xl p-6 max-h-[90vh] overflow-y-auto animate-bounce-in">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-heading text-destructive">🎁 Treat Time!</h2>
+          <h2 className="text-2xl font-heading text-destructive">
+            🎁 Treat Time!{total > 1 ? ` (${index + 1} of ${total})` : ''}
+          </h2>
           <button onClick={onClose} className="brutal-btn p-2 rounded-lg bg-muted"><X size={18} /></button>
         </div>
 

@@ -6,6 +6,7 @@ interface UserCardProps {
   monthlyCount: { done: number; total: number };
   totalTreats: number;
   isMe: boolean;
+  pendingCount?: number;
   onPickTreat?: () => void;
 }
 
@@ -17,7 +18,7 @@ const STATUS_CONFIG = {
 };
 
 export function UserCard({
-  name, emoji, streak, todayStatus, monthlyCount, totalTreats, isMe, onPickTreat,
+  name, emoji, streak, todayStatus, monthlyCount, totalTreats, isMe, pendingCount = 0, onPickTreat,
 }: UserCardProps) {
   const status = STATUS_CONFIG[todayStatus];
 
@@ -53,12 +54,12 @@ export function UserCard({
         </div>
       </div>
 
-      {onPickTreat && (
+      {onPickTreat && pendingCount > 0 && (
         <button
           onClick={onPickTreat}
           className="brutal-btn mt-3 w-full py-2.5 rounded-lg bg-amber-400 text-amber-900 text-base font-heading hover-bounce"
         >
-          🎁 {name} missed! Pick their treat →
+          🎁 {name} missed {pendingCount}×! Pick {pendingCount > 1 ? 'their treats' : 'their treat'} →
         </button>
       )}
     </div>

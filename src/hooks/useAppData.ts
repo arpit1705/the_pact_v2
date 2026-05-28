@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -126,7 +126,7 @@ export function useAppData() {
     userTreats: ['user_treats', pactId, ...allMemberIds] as const,
   };
 
-  const { data: workoutLogs = [] } = useQuery({
+  const { data: workoutLogs = [], isSuccess: workoutLogsLoaded } = useQuery({
     queryKey: KEYS.workoutLogs,
     enabled: !!pactId,
     queryFn: async () => {
@@ -269,6 +269,19 @@ export function useAppData() {
         .from('workout_logs')
         .update(dbUpdates)
         .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.workoutLogs }),
+  });
+
+  // Auto-mark un-logged days (48h grace elapsed) as 'missed' for ALL members of
+  // the pact via a SECURITY DEFINER RPC. Running server-side lets one member's app
+  // open hold an absent co-member accountable; the RPC is idempotent (unique
+  // pact_id/user_id/date + ON CONFLICT DO NOTHING) so concurrent opens are safe.
+  const autoMarkMissedMutation = useMutation({
+    mutationFn: async () => {
+      if (!pactId) return;
+      const { error } = await supabase.rpc('auto_mark_missed', { p_pact_id: pactId });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.workoutLogs }),
@@ -420,6 +433,19 @@ export function useAppData() {
     [updateWorkoutLogMutation],
   );
 
+  // Run the 48h auto-miss sweep once per mount, after the logs query has settled
+  // (otherwise we'd insert rows for days we simply haven't loaded yet).
+  // Fire the pact-wide auto-miss sweep once per mount, after the logs query has
+  // settled so the post-RPC invalidation cleanly refetches any new rows.
+  const autoMarkRan = useRef(false);
+  useEffect(() => {
+    if (autoMarkRan.current) return;
+    if (!workoutLogsLoaded || !pactId) return;
+    autoMarkRan.current = true;
+    autoMarkMissedMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutLogsLoaded, pactId]);
+
   const incrementTreat = useCallback(
     (userId: string, treatKey: string) =>
       incrementTreatMutation.mutate({ userId, treatKey }),
@@ -507,11 +533,24 @@ export function useAppData() {
   );
 
   const getPendingMissedLogs = useCallback(
-    (userId: string): WorkoutLog[] =>
-      workoutLogs.filter(
-        l => l.userId === userId && l.status === 'missed' && l.treatSelected === null && !l.mutualMiss,
-      ),
-    [workoutLogs],
+    (userId: string): WorkoutLog[] => {
+      const otherIds = members.map(m => m.id).filter(id => id !== userId);
+      const loggedDatesByUser: Record<string, Set<string>> = {};
+      for (const id of otherIds) {
+        loggedDatesByUser[id] = new Set(workoutLogs.filter(l => l.userId === id).map(l => l.date));
+      }
+      return workoutLogs
+        .filter(l => {
+          if (l.userId !== userId) return false;
+          if (l.status !== 'missed') return false;
+          if (l.treatSelected !== null) return false;
+          if (l.mutualMiss) return false;
+          // Only surface treat prompt once every partner has logged that date.
+          return otherIds.every(id => loggedDatesByUser[id].has(l.date));
+        })
+        .sort((a, b) => a.date.localeCompare(b.date));
+    },
+    [workoutLogs, members],
   );
 
   const getMemberProfile = useCallback(
