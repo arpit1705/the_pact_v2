@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -126,7 +126,7 @@ export function useAppData() {
     userTreats: ['user_treats', pactId, ...allMemberIds] as const,
   };
 
-  const { data: workoutLogs = [] } = useQuery({
+  const { data: workoutLogs = [], isSuccess: workoutLogsLoaded } = useQuery({
     queryKey: KEYS.workoutLogs,
     enabled: !!pactId,
     queryFn: async () => {
@@ -269,6 +269,48 @@ export function useAppData() {
         .from('workout_logs')
         .update(dbUpdates)
         .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.workoutLogs }),
+  });
+
+  // Auto-mark days the current user never logged as 'missed' once their 48h grace
+  // window has fully elapsed (i.e. days on or before today-2). These rows have no
+  // treat selected and are not mutual misses, so they flow into the normal
+  // partner-review path — we deliberately bypass addWorkoutLogMutation to avoid
+  // triggering its mutual-miss auto-resolution side effects.
+  const autoMarkMissedMutation = useMutation({
+    mutationFn: async () => {
+      if (!myId || !pactId) return;
+
+      const myLoggedDates = new Set(
+        workoutLogs.filter(l => l.userId === myId).map(l => l.date),
+      );
+
+      // Days today-2 through today-7: grace fully elapsed, today/yesterday spared.
+      const missingDates: string[] = [];
+      for (let i = 2; i <= 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        if (!myLoggedDates.has(dateStr)) missingDates.push(dateStr);
+      }
+
+      if (missingDates.length === 0) return;
+
+      const { error } = await supabase.from('workout_logs').insert(
+        missingDates.map(date => ({
+          user_id: myId,
+          pact_id: pactId,
+          date,
+          status: 'missed' as const,
+          notes: null,
+          photo_url: null,
+          punishment_selected: null,
+          punishment_resolved_at: null,
+          mutual_miss: false,
+        })),
+      );
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.workoutLogs }),
@@ -419,6 +461,17 @@ export function useAppData() {
       updateWorkoutLogMutation.mutateAsync({ id, updates }),
     [updateWorkoutLogMutation],
   );
+
+  // Run the 48h auto-miss sweep once per mount, after the logs query has settled
+  // (otherwise we'd insert rows for days we simply haven't loaded yet).
+  const autoMarkRan = useRef(false);
+  useEffect(() => {
+    if (autoMarkRan.current) return;
+    if (!workoutLogsLoaded || !pactId || !myId) return;
+    autoMarkRan.current = true;
+    autoMarkMissedMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutLogsLoaded, pactId, myId]);
 
   const incrementTreat = useCallback(
     (userId: string, treatKey: string) =>
