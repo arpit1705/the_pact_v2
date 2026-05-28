@@ -313,3 +313,60 @@ create policy "treats: own update"
 create policy "treats: own delete"
   on public.user_treats for delete
   using (auth.uid() = user_id);
+
+-- ============================================================
+-- RPC: auto_mark_missed
+-- Marks un-logged days as 'missed' for ALL members of a pact, so a
+-- member who never opens the app still gets held accountable when any
+-- co-member opens it. Window: (today - 7) .. (today - 2) inclusive
+-- (48h grace). SECURITY DEFINER to insert on behalf of co-members;
+-- caller must be a pact member. Idempotent via the unique
+-- (pact_id, user_id, date) constraint + ON CONFLICT DO NOTHING. A second
+-- pass flags mutual misses (every member missed the same day, no treat
+-- assigned) to match the client mutual-miss rule.
+-- ============================================================
+create or replace function public.auto_mark_missed(p_pact_id uuid)
+returns void language plpgsql security definer as $$
+declare
+  v_member_count int;
+begin
+  if not public.is_pact_member(p_pact_id) then
+    raise exception 'Not authorised for this pact';
+  end if;
+
+  insert into public.workout_logs (pact_id, user_id, date, status, mutual_miss)
+  select p_pact_id, m.user_id, d::date, 'missed', false
+  from public.pact_members m
+  cross join generate_series(
+    (current_date - interval '7 days'),
+    (current_date - interval '2 days'),
+    interval '1 day'
+  ) as d
+  where m.pact_id = p_pact_id
+  on conflict (pact_id, user_id, date) do nothing;
+
+  select count(*) into v_member_count
+  from public.pact_members where pact_id = p_pact_id;
+
+  update public.workout_logs wl
+  set mutual_miss = true
+  where wl.pact_id = p_pact_id
+    and wl.date >= (current_date - interval '7 days')
+    and wl.date <= (current_date - interval '2 days')
+    and wl.status = 'missed'
+    and wl.mutual_miss = false
+    and wl.date in (
+      select date
+      from public.workout_logs
+      where pact_id = p_pact_id
+        and status = 'missed'
+        and punishment_selected is null
+        and date >= (current_date - interval '7 days')
+        and date <= (current_date - interval '2 days')
+      group by date
+      having count(*) = v_member_count
+    );
+end;
+$$;
+
+grant execute on function public.auto_mark_missed(uuid) to authenticated;
