@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import TreatTracker from '@/pages/TreatTracker';
 import TreatEditor from '@/pages/TreatEditor';
 import History from '@/pages/History';
+import Stats from '@/pages/Stats';
 import Login from '@/pages/Login';
 import Onboarding from '@/pages/Onboarding';
 
@@ -50,6 +51,7 @@ function AppContent() {
         <Route path="/treats" element={<TreatTracker data={data} />} />
         <Route path="/my-treats" element={<TreatEditor data={data} />} />
         <Route path="/history" element={<History data={data} />} />
+        <Route path="/stats" element={<Stats data={data} />} />
         <Route path="*" element={<Dashboard data={data} />} />
       </Routes>
     </>

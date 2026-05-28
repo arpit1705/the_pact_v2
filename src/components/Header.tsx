@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { path: '/treats', label: 'Treats', emoji: '🎁' },
   { path: '/my-treats', label: 'My Treats', emoji: '✏️' },
   { path: '/history', label: 'History', emoji: '📜' },
+  { path: '/stats', label: 'Stats', emoji: '📊' },
 ];
 
 export function Header() {
